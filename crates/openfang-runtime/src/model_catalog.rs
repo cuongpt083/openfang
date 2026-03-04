@@ -7,10 +7,10 @@ use openfang_types::model_catalog::{
     AuthStatus, ModelCatalogEntry, ModelTier, ProviderInfo, AI21_BASE_URL, ANTHROPIC_BASE_URL,
     BEDROCK_BASE_URL, CEREBRAS_BASE_URL, COHERE_BASE_URL, DEEPSEEK_BASE_URL, FIREWORKS_BASE_URL,
     GEMINI_BASE_URL, GITHUB_COPILOT_BASE_URL, GROQ_BASE_URL, HUGGINGFACE_BASE_URL,
-    LMSTUDIO_BASE_URL, MINIMAX_BASE_URL, MISTRAL_BASE_URL, MOONSHOT_BASE_URL, OLLAMA_BASE_URL,
-    OPENAI_BASE_URL, OPENROUTER_BASE_URL, PERPLEXITY_BASE_URL, QIANFAN_BASE_URL, QWEN_BASE_URL,
-    REPLICATE_BASE_URL, SAMBANOVA_BASE_URL, TOGETHER_BASE_URL, VLLM_BASE_URL, VOLCENGINE_BASE_URL,
-    XAI_BASE_URL, ZHIPU_BASE_URL, ZHIPU_CODING_BASE_URL,
+    LLAMACPP_BASE_URL, LMSTUDIO_BASE_URL, MINIMAX_BASE_URL, MISTRAL_BASE_URL, MOONSHOT_BASE_URL,
+    OLLAMA_BASE_URL, OPENAI_BASE_URL, OPENROUTER_BASE_URL, PERPLEXITY_BASE_URL, QIANFAN_BASE_URL,
+    QWEN_BASE_URL, REPLICATE_BASE_URL, SAMBANOVA_BASE_URL, TOGETHER_BASE_URL, VLLM_BASE_URL,
+    VOLCENGINE_BASE_URL, XAI_BASE_URL, ZHIPU_BASE_URL, ZHIPU_CODING_BASE_URL,
 };
 use std::collections::HashMap;
 
@@ -463,6 +463,15 @@ fn builtin_providers() -> Vec<ProviderInfo> {
             auth_status: AuthStatus::NotRequired,
             model_count: 0,
         },
+        ProviderInfo {
+            id: "llamacpp".into(),
+            display_name: "Llama.cpp".into(),
+            api_key_env: "LLAMACPP_API_KEY".into(),
+            base_url: LLAMACPP_BASE_URL.into(),
+            key_required: false,
+            auth_status: AuthStatus::NotRequired,
+            model_count: 0,
+        },
         // ── New providers (8) ──────────────────────────────────────
         ProviderInfo {
             id: "perplexity".into(),
@@ -709,6 +718,8 @@ fn builtin_aliases() -> HashMap<String, String> {
         ("claude-code-opus", "claude-code/opus"),
         ("claude-code-sonnet", "claude-code/sonnet"),
         ("claude-code-haiku", "claude-code/haiku"),
+        // Llama.cpp aliases
+        ("llamacpp", "llamacpp-default"),
     ];
     pairs
         .into_iter()
@@ -1931,6 +1942,23 @@ fn builtin_models() -> Vec<ModelCatalogEntry> {
             aliases: vec![],
         },
         // ══════════════════════════════════════════════════════════════
+        // Llama.cpp (1) — generic local entry + dynamic discovery
+        // ══════════════════════════════════════════════════════════════
+        ModelCatalogEntry {
+            id: "llamacpp-default".into(),
+            display_name: "Llama.cpp Local Model".into(),
+            provider: "llamacpp".into(),
+            tier: ModelTier::Local,
+            context_window: 32_768,
+            max_output_tokens: 4_096,
+            input_cost_per_m: 0.0,
+            output_cost_per_m: 0.0,
+            supports_tools: true,
+            supports_vision: false,
+            supports_streaming: true,
+            aliases: vec![],
+        },
+        // ══════════════════════════════════════════════════════════════
         // Perplexity (4)
         // ══════════════════════════════════════════════════════════════
         ModelCatalogEntry {
@@ -3025,7 +3053,7 @@ mod tests {
     #[test]
     fn test_catalog_has_providers() {
         let catalog = ModelCatalog::new();
-        assert_eq!(catalog.list_providers().len(), 31);
+        assert_eq!(catalog.list_providers().len(), 32);
     }
 
     #[test]
