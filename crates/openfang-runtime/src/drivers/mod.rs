@@ -93,6 +93,8 @@ fn provider_defaults(provider: &str) -> Option<ProviderDefaults> {
         "lemonade" => Some(ProviderDefaults {
             base_url: LEMONADE_BASE_URL,
             api_key_env: "LEMONADE_API_KEY",
+            key_required: true,
+        }),
         "llamacpp" | "llama-cpp" | "llama.cpp" => Some(ProviderDefaults {
             base_url: LLAMACPP_BASE_URL,
             api_key_env: "LLAMACPP_API_KEY",

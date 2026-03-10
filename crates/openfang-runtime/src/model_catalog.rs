@@ -517,6 +517,9 @@ fn builtin_providers() -> Vec<ProviderInfo> {
             display_name: "Lemonade".into(),
             api_key_env: "LEMONADE_API_KEY".into(),
             base_url: LEMONADE_BASE_URL.into(),
+            key_required: true,
+            auth_status: AuthStatus::Missing,
+            model_count: 0,
         },
         ProviderInfo {
             id: "llamacpp".into(),
