@@ -1,5 +1,6 @@
 //! Configuration types for the OpenFang kernel.
 
+use crate::agent::SystemPromptMode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1386,6 +1387,9 @@ pub struct DefaultModelConfig {
     pub model: String,
     /// Environment variable name for the API key.
     pub api_key_env: String,
+    /// How to encode the system prompt for provider compatibility.
+    #[serde(default)]
+    pub system_prompt_mode: SystemPromptMode,
     /// Optional base URL override.
     pub base_url: Option<String>,
 }
@@ -1396,6 +1400,7 @@ impl Default for DefaultModelConfig {
             provider: "anthropic".to_string(),
             model: "claude-sonnet-4-20250514".to_string(),
             api_key_env: "ANTHROPIC_API_KEY".to_string(),
+            system_prompt_mode: SystemPromptMode::Native,
             base_url: None,
         }
     }
@@ -3727,10 +3732,7 @@ mod tests {
             }],
         );
         // Auth profiles take precedence over convention (but not explicit mapping)
-        assert_eq!(
-            config.resolve_api_key_env("nvidia"),
-            "NVIDIA_PRIMARY_KEY"
-        );
+        assert_eq!(config.resolve_api_key_env("nvidia"), "NVIDIA_PRIMARY_KEY");
     }
 
     #[test]

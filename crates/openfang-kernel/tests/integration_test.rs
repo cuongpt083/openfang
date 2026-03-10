@@ -18,6 +18,7 @@ fn test_config() -> KernelConfig {
             provider: "groq".to_string(),
             model: "llama-3.3-70b-versatile".to_string(),
             api_key_env: "GROQ_API_KEY".to_string(),
+            system_prompt_mode: openfang_types::agent::SystemPromptMode::Native,
             base_url: None,
         },
         ..KernelConfig::default()

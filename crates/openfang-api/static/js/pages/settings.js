@@ -303,8 +303,6 @@ function settingsPage() {
         await OpenFangAPI.post('/api/config/set', { path: path, value: value });
         this.configDirty[key] = false;
         OpenFangToast.success('Saved ' + field);
-      } catch(e) {
-        OpenFangToast.success('Saved ' + key);
       } catch (e) {
         OpenFangToast.error('Failed to save: ' + e.message);
       }

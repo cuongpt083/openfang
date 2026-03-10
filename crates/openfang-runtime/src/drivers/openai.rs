@@ -5,7 +5,10 @@
 use crate::llm_driver::{CompletionRequest, CompletionResponse, LlmDriver, LlmError, StreamEvent};
 use async_trait::async_trait;
 use futures::StreamExt;
-use openfang_types::message::{ContentBlock, MessageContent, Role, StopReason, TokenUsage};
+use openfang_types::agent::SystemPromptMode;
+use openfang_types::message::{
+    ContentBlock, Message, MessageContent, Role, StopReason, TokenUsage,
+};
 use openfang_types::tool::ToolCall;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
@@ -174,141 +177,197 @@ struct OaiUsage {
     completion_tokens: u64,
 }
 
+fn system_prompt_prefix(system: &str) -> String {
+    format!("System instructions:\n{system}\n\n")
+}
+
+fn merge_system_into_first_user(messages: &mut Vec<Message>, system: &str) {
+    let prefix = system_prompt_prefix(system);
+
+    for msg in messages.iter_mut() {
+        if msg.role != Role::User {
+            continue;
+        }
+
+        match &mut msg.content {
+            MessageContent::Text(text) => {
+                let original = std::mem::take(text);
+                *text = format!("{prefix}{original}");
+                return;
+            }
+            MessageContent::Blocks(blocks) => {
+                if blocks
+                    .iter()
+                    .any(|block| matches!(block, ContentBlock::ToolResult { .. }))
+                {
+                    continue;
+                }
+                blocks.insert(0, ContentBlock::Text { text: prefix });
+                return;
+            }
+        }
+    }
+
+    messages.insert(0, Message::user(prefix));
+}
+
+fn normalize_system_prompt(request: &CompletionRequest) -> (Option<String>, Vec<Message>) {
+    let mut system_parts = Vec::new();
+    if let Some(system) = request.system.as_ref().filter(|s| !s.trim().is_empty()) {
+        system_parts.push(system.clone());
+    }
+
+    let mut messages = Vec::with_capacity(request.messages.len());
+    for msg in &request.messages {
+        if msg.role == Role::System {
+            let text = msg.content.text_content();
+            if !text.trim().is_empty() {
+                system_parts.push(text);
+            }
+            continue;
+        }
+        messages.push(msg.clone());
+    }
+
+    let system = (!system_parts.is_empty()).then(|| system_parts.join("\n\n"));
+    match request.system_prompt_mode {
+        SystemPromptMode::Native => (system, messages),
+        SystemPromptMode::MergeIntoFirstUser => {
+            if let Some(ref text) = system {
+                merge_system_into_first_user(&mut messages, text);
+            }
+            (None, messages)
+        }
+    }
+}
+
+fn build_oai_messages(request: &CompletionRequest) -> Vec<OaiMessage> {
+    let (system, messages) = normalize_system_prompt(request);
+    let mut oai_messages: Vec<OaiMessage> = Vec::new();
+
+    if let Some(system) = system {
+        oai_messages.push(OaiMessage {
+            role: "system".to_string(),
+            content: Some(OaiMessageContent::Text(system)),
+            tool_calls: None,
+            tool_call_id: None,
+        });
+    }
+
+    for msg in &messages {
+        match (&msg.role, &msg.content) {
+            (Role::User, MessageContent::Text(text)) => {
+                oai_messages.push(OaiMessage {
+                    role: "user".to_string(),
+                    content: Some(OaiMessageContent::Text(text.clone())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+            (Role::Assistant, MessageContent::Text(text)) => {
+                oai_messages.push(OaiMessage {
+                    role: "assistant".to_string(),
+                    content: Some(OaiMessageContent::Text(text.clone())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+            (Role::User, MessageContent::Blocks(blocks)) => {
+                let mut parts: Vec<OaiContentPart> = Vec::new();
+                let mut has_tool_results = false;
+                for block in blocks {
+                    match block {
+                        ContentBlock::ToolResult {
+                            tool_use_id,
+                            content,
+                            ..
+                        } => {
+                            has_tool_results = true;
+                            oai_messages.push(OaiMessage {
+                                role: "tool".to_string(),
+                                content: Some(OaiMessageContent::Text(if content.is_empty() {
+                                    "(empty)".to_string()
+                                } else {
+                                    content.clone()
+                                })),
+                                tool_calls: None,
+                                tool_call_id: Some(tool_use_id.clone()),
+                            });
+                        }
+                        ContentBlock::Text { text } => {
+                            parts.push(OaiContentPart::Text { text: text.clone() });
+                        }
+                        ContentBlock::Image { media_type, data } => {
+                            parts.push(OaiContentPart::ImageUrl {
+                                image_url: OaiImageUrl {
+                                    url: format!("data:{media_type};base64,{data}"),
+                                },
+                            });
+                        }
+                        ContentBlock::Thinking { .. } => {}
+                        _ => {}
+                    }
+                }
+                if !parts.is_empty() && !has_tool_results {
+                    oai_messages.push(OaiMessage {
+                        role: "user".to_string(),
+                        content: Some(OaiMessageContent::Parts(parts)),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    });
+                }
+            }
+            (Role::Assistant, MessageContent::Blocks(blocks)) => {
+                let mut text_parts = Vec::new();
+                let mut tool_calls = Vec::new();
+                for block in blocks {
+                    match block {
+                        ContentBlock::Text { text } => text_parts.push(text.clone()),
+                        ContentBlock::ToolUse { id, name, input } => {
+                            tool_calls.push(OaiToolCall {
+                                id: id.clone(),
+                                call_type: "function".to_string(),
+                                function: OaiFunction {
+                                    name: name.clone(),
+                                    arguments: serde_json::to_string(input).unwrap_or_default(),
+                                },
+                            });
+                        }
+                        ContentBlock::Thinking { .. } => {}
+                        _ => {}
+                    }
+                }
+                let has_tool_calls = !tool_calls.is_empty();
+                oai_messages.push(OaiMessage {
+                    role: "assistant".to_string(),
+                    content: if text_parts.is_empty() {
+                        if has_tool_calls {
+                            Some(OaiMessageContent::Text(String::new()))
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(OaiMessageContent::Text(text_parts.join("")))
+                    },
+                    tool_calls: if tool_calls.is_empty() {
+                        None
+                    } else {
+                        Some(tool_calls)
+                    },
+                    tool_call_id: None,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    oai_messages
+}
+
 #[async_trait]
 impl LlmDriver for OpenAIDriver {
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-        let mut oai_messages: Vec<OaiMessage> = Vec::new();
-
-        // Add system message if present
-        if let Some(ref system) = request.system {
-            oai_messages.push(OaiMessage {
-                role: "system".to_string(),
-                content: Some(OaiMessageContent::Text(system.clone())),
-                tool_calls: None,
-                tool_call_id: None,
-            });
-        }
-
-        // Convert messages
-        for msg in &request.messages {
-            match (&msg.role, &msg.content) {
-                (Role::System, MessageContent::Text(text)) => {
-                    if request.system.is_none() {
-                        oai_messages.push(OaiMessage {
-                            role: "system".to_string(),
-                            content: Some(OaiMessageContent::Text(text.clone())),
-                            tool_calls: None,
-                            tool_call_id: None,
-                        });
-                    }
-                }
-                (Role::User, MessageContent::Text(text)) => {
-                    oai_messages.push(OaiMessage {
-                        role: "user".to_string(),
-                        content: Some(OaiMessageContent::Text(text.clone())),
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                (Role::Assistant, MessageContent::Text(text)) => {
-                    oai_messages.push(OaiMessage {
-                        role: "assistant".to_string(),
-                        content: Some(OaiMessageContent::Text(text.clone())),
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                (Role::User, MessageContent::Blocks(blocks)) => {
-                    // Handle tool results and images in user messages
-                    let mut parts: Vec<OaiContentPart> = Vec::new();
-                    let mut has_tool_results = false;
-                    for block in blocks {
-                        match block {
-                            ContentBlock::ToolResult {
-                                tool_use_id,
-                                content,
-                                ..
-                            } => {
-                                has_tool_results = true;
-                                oai_messages.push(OaiMessage {
-                                    role: "tool".to_string(),
-                                    content: Some(OaiMessageContent::Text(
-                                        if content.is_empty() { "(empty)".to_string() } else { content.clone() }
-                                    )),
-                                    tool_calls: None,
-                                    tool_call_id: Some(tool_use_id.clone()),
-                                });
-                            }
-                            ContentBlock::Text { text } => {
-                                parts.push(OaiContentPart::Text { text: text.clone() });
-                            }
-                            ContentBlock::Image { media_type, data } => {
-                                parts.push(OaiContentPart::ImageUrl {
-                                    image_url: OaiImageUrl {
-                                        url: format!("data:{media_type};base64,{data}"),
-                                    },
-                                });
-                            }
-                            ContentBlock::Thinking { .. } => {}
-                            _ => {}
-                        }
-                    }
-                    if !parts.is_empty() && !has_tool_results {
-                        oai_messages.push(OaiMessage {
-                            role: "user".to_string(),
-                            content: Some(OaiMessageContent::Parts(parts)),
-                            tool_calls: None,
-                            tool_call_id: None,
-                        });
-                    }
-                }
-                (Role::Assistant, MessageContent::Blocks(blocks)) => {
-                    let mut text_parts = Vec::new();
-                    let mut tool_calls = Vec::new();
-                    for block in blocks {
-                        match block {
-                            ContentBlock::Text { text } => text_parts.push(text.clone()),
-                            ContentBlock::ToolUse { id, name, input } => {
-                                tool_calls.push(OaiToolCall {
-                                    id: id.clone(),
-                                    call_type: "function".to_string(),
-                                    function: OaiFunction {
-                                        name: name.clone(),
-                                        arguments: serde_json::to_string(input).unwrap_or_default(),
-                                    },
-                                });
-                            }
-                            ContentBlock::Thinking { .. } => {}
-                            _ => {}
-                        }
-                    }
-                    let has_tool_calls = !tool_calls.is_empty();
-                    oai_messages.push(OaiMessage {
-                        role: "assistant".to_string(),
-                        // ZHIPU (GLM) rejects assistant messages where content is
-                        // null or omitted when tool_calls are present (error 1214).
-                        // Always send an empty string so every OpenAI-compat
-                        // provider gets a valid payload.
-                        content: if text_parts.is_empty() {
-                            if has_tool_calls {
-                                Some(OaiMessageContent::Text(String::new()))
-                            } else {
-                                None
-                            }
-                        } else {
-                            Some(OaiMessageContent::Text(text_parts.join("")))
-                        },
-                        tool_calls: if tool_calls.is_empty() {
-                            None
-                        } else {
-                            Some(tool_calls)
-                        },
-                        tool_call_id: None,
-                    });
-                }
-                _ => {}
-            }
-        }
+        let oai_messages = build_oai_messages(&request);
 
         let oai_tools: Vec<OaiTool> = request
             .tools
@@ -342,7 +401,11 @@ impl LlmDriver for OpenAIDriver {
             messages: oai_messages,
             max_tokens: mt,
             max_completion_tokens: mct,
-            temperature: if rejects_temperature(&request.model) { None } else { Some(request.temperature) },
+            temperature: if rejects_temperature(&request.model) {
+                None
+            } else {
+                Some(request.temperature)
+            },
             tools: oai_tools,
             tool_choice,
             stream: false,
@@ -434,9 +497,16 @@ impl LlmDriver for OpenAIDriver {
 
                 // Auto-cap max_tokens when model rejects our value (e.g. Groq Maverick limit 8192)
                 if status == 400 && body.contains("max_tokens") && attempt < max_retries {
-                    let current = oai_request.max_tokens.or(oai_request.max_completion_tokens).unwrap_or(4096);
+                    let current = oai_request
+                        .max_tokens
+                        .or(oai_request.max_completion_tokens)
+                        .unwrap_or(4096);
                     let cap = extract_max_tokens_limit(&body).unwrap_or(current / 2);
-                    warn!(old = current, new = cap, "Auto-capping max_tokens to model limit");
+                    warn!(
+                        old = current,
+                        new = cap,
+                        "Auto-capping max_tokens to model limit"
+                    );
                     if oai_request.max_completion_tokens.is_some() {
                         oai_request.max_completion_tokens = Some(cap);
                     } else {
@@ -553,107 +623,7 @@ impl LlmDriver for OpenAIDriver {
         tx: tokio::sync::mpsc::Sender<StreamEvent>,
     ) -> Result<CompletionResponse, LlmError> {
         // Build request (same as complete but with stream: true)
-        let mut oai_messages: Vec<OaiMessage> = Vec::new();
-
-        if let Some(ref system) = request.system {
-            oai_messages.push(OaiMessage {
-                role: "system".to_string(),
-                content: Some(OaiMessageContent::Text(system.clone())),
-                tool_calls: None,
-                tool_call_id: None,
-            });
-        }
-
-        for msg in &request.messages {
-            match (&msg.role, &msg.content) {
-                (Role::System, MessageContent::Text(text)) => {
-                    if request.system.is_none() {
-                        oai_messages.push(OaiMessage {
-                            role: "system".to_string(),
-                            content: Some(OaiMessageContent::Text(text.clone())),
-                            tool_calls: None,
-                            tool_call_id: None,
-                        });
-                    }
-                }
-                (Role::User, MessageContent::Text(text)) => {
-                    oai_messages.push(OaiMessage {
-                        role: "user".to_string(),
-                        content: Some(OaiMessageContent::Text(text.clone())),
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                (Role::Assistant, MessageContent::Text(text)) => {
-                    oai_messages.push(OaiMessage {
-                        role: "assistant".to_string(),
-                        content: Some(OaiMessageContent::Text(text.clone())),
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                (Role::User, MessageContent::Blocks(blocks)) => {
-                    for block in blocks {
-                        if let ContentBlock::ToolResult {
-                            tool_use_id,
-                            content,
-                            ..
-                        } = block
-                        {
-                            oai_messages.push(OaiMessage {
-                                role: "tool".to_string(),
-                                content: Some(OaiMessageContent::Text(
-                                    if content.is_empty() { "(empty)".to_string() } else { content.clone() }
-                                )),
-                                tool_calls: None,
-                                tool_call_id: Some(tool_use_id.clone()),
-                            });
-                        }
-                    }
-                }
-                (Role::Assistant, MessageContent::Blocks(blocks)) => {
-                    let mut text_parts = Vec::new();
-                    let mut tool_calls_out = Vec::new();
-                    for block in blocks {
-                        match block {
-                            ContentBlock::Text { text } => text_parts.push(text.clone()),
-                            ContentBlock::ToolUse { id, name, input } => {
-                                tool_calls_out.push(OaiToolCall {
-                                    id: id.clone(),
-                                    call_type: "function".to_string(),
-                                    function: OaiFunction {
-                                        name: name.clone(),
-                                        arguments: serde_json::to_string(input).unwrap_or_default(),
-                                    },
-                                });
-                            }
-                            ContentBlock::Thinking { .. } => {}
-                            _ => {}
-                        }
-                    }
-                    let has_tool_calls = !tool_calls_out.is_empty();
-                    oai_messages.push(OaiMessage {
-                        role: "assistant".to_string(),
-                        content: if text_parts.is_empty() {
-                            if has_tool_calls {
-                                Some(OaiMessageContent::Text(String::new()))
-                            } else {
-                                None
-                            }
-                        } else {
-                            Some(OaiMessageContent::Text(text_parts.join("")))
-                        },
-                        tool_calls: if tool_calls_out.is_empty() {
-                            None
-                        } else {
-                            Some(tool_calls_out)
-                        },
-                        tool_call_id: None,
-                    });
-                }
-                _ => {}
-            }
-        }
+        let oai_messages = build_oai_messages(&request);
 
         let oai_tools: Vec<OaiTool> = request
             .tools
@@ -687,7 +657,11 @@ impl LlmDriver for OpenAIDriver {
             messages: oai_messages,
             max_tokens: mt,
             max_completion_tokens: mct,
-            temperature: if rejects_temperature(&request.model) { None } else { Some(request.temperature) },
+            temperature: if rejects_temperature(&request.model) {
+                None
+            } else {
+                Some(request.temperature)
+            },
             tools: oai_tools,
             tool_choice,
             stream: true,
@@ -781,7 +755,10 @@ impl LlmDriver for OpenAIDriver {
 
                 // Auto-cap max_tokens when model rejects our value
                 if status == 400 && body.contains("max_tokens") && attempt < max_retries {
-                    let current = oai_request.max_tokens.or(oai_request.max_completion_tokens).unwrap_or(4096);
+                    let current = oai_request
+                        .max_tokens
+                        .or(oai_request.max_completion_tokens)
+                        .unwrap_or(4096);
                     let cap = extract_max_tokens_limit(&body).unwrap_or(current / 2);
                     warn!(old = current, new = cap, "Auto-capping max_tokens (stream)");
                     if oai_request.max_completion_tokens.is_some() {
@@ -1146,6 +1123,21 @@ fn parse_groq_failed_tool_call(body: &str) -> Option<CompletionResponse> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openfang_types::agent::SystemPromptMode;
+    use openfang_types::message::{Message, MessageContent};
+
+    fn base_request(messages: Vec<Message>) -> CompletionRequest {
+        CompletionRequest {
+            model: "test-model".to_string(),
+            messages,
+            tools: vec![],
+            max_tokens: 128,
+            temperature: 0.0,
+            system: Some("You are helpful.".to_string()),
+            system_prompt_mode: SystemPromptMode::Native,
+            thinking: None,
+        }
+    }
 
     #[test]
     fn test_openai_driver_creation() {
@@ -1264,5 +1256,64 @@ mod tests {
     #[test]
     fn test_extract_max_tokens_limit_no_match() {
         assert_eq!(extract_max_tokens_limit("some random error"), None);
+    }
+
+    #[test]
+    fn test_native_mode_keeps_system_message() {
+        let request = base_request(vec![Message::user("Hello")]);
+        let messages = build_oai_messages(&request);
+        assert_eq!(messages[0].role, "system");
+        assert_eq!(messages[1].role, "user");
+    }
+
+    #[test]
+    fn test_merge_mode_moves_system_into_first_user_text() {
+        let mut request = base_request(vec![Message::user("Hello")]);
+        request.system_prompt_mode = SystemPromptMode::MergeIntoFirstUser;
+
+        let messages = build_oai_messages(&request);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+        match messages[0].content.as_ref().unwrap() {
+            OaiMessageContent::Text(text) => {
+                assert!(text.contains("System instructions:\nYou are helpful."));
+                assert!(text.ends_with("Hello"));
+            }
+            _ => panic!("expected text content"),
+        }
+    }
+
+    #[test]
+    fn test_merge_mode_prepends_system_to_multimodal_user_message() {
+        let mut request = base_request(vec![Message {
+            role: Role::User,
+            content: MessageContent::Blocks(vec![ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: "AAA".to_string(),
+            }]),
+        }]);
+        request.system_prompt_mode = SystemPromptMode::MergeIntoFirstUser;
+
+        let messages = build_oai_messages(&request);
+        assert_eq!(messages.len(), 1);
+        match messages[0].content.as_ref().unwrap() {
+            OaiMessageContent::Parts(parts) => {
+                assert!(
+                    matches!(&parts[0], OaiContentPart::Text { text } if text.contains("System instructions:\nYou are helpful."))
+                );
+                assert!(matches!(&parts[1], OaiContentPart::ImageUrl { .. }));
+            }
+            _ => panic!("expected multipart content"),
+        }
+    }
+
+    #[test]
+    fn test_merge_mode_synthesizes_user_message_when_missing() {
+        let mut request = base_request(vec![Message::assistant("Hi")]);
+        request.system_prompt_mode = SystemPromptMode::MergeIntoFirstUser;
+
+        let messages = build_oai_messages(&request);
+        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[1].role, "assistant");
     }
 }

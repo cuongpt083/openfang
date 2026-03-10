@@ -267,9 +267,9 @@ impl Default for ResourceQuota {
             max_tool_calls_per_minute: 60,
             max_llm_tokens_per_hour: 1_000_000,
             max_network_bytes_per_hour: 100 * 1024 * 1024, // 100 MB
-            max_cost_per_hour_usd: 0.0, // unlimited by default
-            max_cost_per_day_usd: 0.0,   // unlimited
-            max_cost_per_month_usd: 0.0, // unlimited
+            max_cost_per_hour_usd: 0.0,                    // unlimited by default
+            max_cost_per_day_usd: 0.0,                     // unlimited
+            max_cost_per_month_usd: 0.0,                   // unlimited
         }
     }
 }
@@ -375,6 +375,9 @@ pub struct ModelConfig {
     pub temperature: f32,
     /// System prompt for the agent.
     pub system_prompt: String,
+    /// How to encode the system prompt for provider compatibility.
+    #[serde(default)]
+    pub system_prompt_mode: SystemPromptMode,
     /// Optional API key environment variable name.
     pub api_key_env: Option<String>,
     /// Optional base URL override for the provider.
@@ -389,10 +392,23 @@ impl Default for ModelConfig {
             max_tokens: 4096,
             temperature: 0.7,
             system_prompt: "You are a helpful AI agent.".to_string(),
+            system_prompt_mode: SystemPromptMode::Native,
             api_key_env: None,
             base_url: None,
         }
     }
+}
+
+/// How to encode system prompts when calling an upstream model API.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SystemPromptMode {
+    /// Send the system prompt natively using the provider's system-role support.
+    #[default]
+    Native,
+    /// Fold the system prompt into the first user turn for providers/models that
+    /// reject `system` messages (for example Gemma behind llama.cpp).
+    MergeIntoFirstUser,
 }
 
 /// A fallback model entry in a chain.

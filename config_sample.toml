@@ -1,0 +1,200 @@
+# OpenFang deployment-oriented config sample
+#
+# Copy this to ~/.openfang/config.toml or pass it via your deployment workflow.
+# This file focuses on provider/model configuration and the minimum settings
+# operators usually need in production or self-hosted environments.
+#
+# Important:
+# - `api_key_env` is the NAME of an environment variable, not the secret value.
+# - Use exactly one active `[default_model]` block.
+# - Keep alternative provider examples commented and uncomment the one you want.
+
+# ---------------------------------------------------------------------------
+# Core runtime settings
+# ---------------------------------------------------------------------------
+
+api_listen = "0.0.0.0:4200"
+api_key = "change-me-in-production"
+log_level = "info"
+mode = "stable"
+
+# Optional: put agent workspaces on persistent storage.
+# workspaces_dir = "/var/lib/openfang/workspaces"
+
+# Optional: override OpenFang home/data roots explicitly.
+# home_dir = "/var/lib/openfang"
+# data_dir = "/var/lib/openfang/data"
+
+# ---------------------------------------------------------------------------
+# Primary LLM provider
+# ---------------------------------------------------------------------------
+#
+# Choose one active profile below. Leave the others commented.
+
+[default_model]
+provider = "anthropic"
+model = "claude-sonnet-4-20250514"
+api_key_env = "ANTHROPIC_API_KEY"
+system_prompt_mode = "native"
+
+# OpenAI
+# [default_model]
+# provider = "openai"
+# model = "gpt-4o"
+# api_key_env = "OPENAI_API_KEY"
+# system_prompt_mode = "native"
+
+# Groq
+# [default_model]
+# provider = "groq"
+# model = "llama-3.3-70b-versatile"
+# api_key_env = "GROQ_API_KEY"
+# system_prompt_mode = "native"
+
+# Ollama (local)
+# [default_model]
+# provider = "ollama"
+# model = "llama3.2:latest"
+# api_key_env = ""
+# system_prompt_mode = "native"
+# base_url = "http://127.0.0.1:11434/v1"
+
+# LM Studio (local OpenAI-compatible endpoint)
+# [default_model]
+# provider = "lmstudio"
+# model = "local-model"
+# api_key_env = ""
+# system_prompt_mode = "native"
+# base_url = "http://127.0.0.1:1234/v1"
+
+# llama.cpp serving Gemma-family models
+# Use merge_into_first_user because Gemma templates commonly reject system role.
+# [default_model]
+# provider = "llamacpp"
+# model = "gemma-3-27b-it"
+# api_key_env = ""
+# system_prompt_mode = "merge_into_first_user"
+# base_url = "http://127.0.0.1:8080/v1"
+
+# vLLM or another OpenAI-compatible self-hosted endpoint
+# [default_model]
+# provider = "vllm"
+# model = "meta-llama/Llama-3.1-70B-Instruct"
+# api_key_env = ""
+# system_prompt_mode = "native"
+# base_url = "http://127.0.0.1:8000/v1"
+
+# Custom provider name with explicit URL and API-key env mapping
+# [default_model]
+# provider = "myproxy"
+# model = "gpt-4o-mini"
+# api_key_env = "MYPROXY_API_KEY"
+# system_prompt_mode = "native"
+# base_url = "https://llm-proxy.example.com/v1"
+
+# ---------------------------------------------------------------------------
+# Global provider URL overrides
+# ---------------------------------------------------------------------------
+#
+# Use this when you want a provider alias to point somewhere custom without
+# repeating `base_url` on every agent or default-model selection.
+#
+# Common pattern:
+# - set provider = "llamacpp" in [default_model]
+# - set the endpoint here
+
+[provider_urls]
+ollama = "http://127.0.0.1:11434/v1"
+llamacpp = "http://127.0.0.1:8080/v1"
+# lmstudio = "http://127.0.0.1:1234/v1"
+# vllm = "http://127.0.0.1:8000/v1"
+# myproxy = "https://llm-proxy.example.com/v1"
+
+# ---------------------------------------------------------------------------
+# Provider API-key env mappings
+# ---------------------------------------------------------------------------
+#
+# Mostly useful for custom/unknown providers. Built-in providers already have
+# normal defaults, but you can override them here if your environment uses
+# different variable names.
+
+[provider_api_keys]
+# myproxy = "MYPROXY_API_KEY"
+# azure_openai = "AZURE_OPENAI_API_KEY"
+
+# ---------------------------------------------------------------------------
+# Fallback provider chain
+# ---------------------------------------------------------------------------
+#
+# If the primary provider fails, OpenFang will try these in order.
+# This is useful for "local first, cloud fallback" or vice versa.
+
+[[fallback_providers]]
+provider = "ollama"
+model = "llama3.2:latest"
+api_key_env = ""
+base_url = "http://127.0.0.1:11434/v1"
+
+[[fallback_providers]]
+provider = "groq"
+model = "llama-3.3-70b-versatile"
+api_key_env = "GROQ_API_KEY"
+
+# Example fallback for llama.cpp + Gemma if you want local inference first:
+# [[fallback_providers]]
+# provider = "llamacpp"
+# model = "gemma-3-27b-it"
+# api_key_env = ""
+# base_url = "http://127.0.0.1:8080/v1"
+
+# ---------------------------------------------------------------------------
+# Memory and embeddings
+# ---------------------------------------------------------------------------
+#
+# These are often the next deployment settings operators need after LLM setup.
+
+[memory]
+decay_rate = 0.05
+# sqlite_path = "/var/lib/openfang/openfang.db"
+# embedding_provider = "ollama"
+# embedding_model = "all-MiniLM-L6-v2"
+# embedding_api_key_env = ""
+
+# ---------------------------------------------------------------------------
+# Web/API behavior
+# ---------------------------------------------------------------------------
+
+usage_footer = "off"
+
+# If you want the dashboard/API protected behind Bearer auth, keep `api_key`
+# non-empty and terminate TLS at your reverse proxy.
+
+# ---------------------------------------------------------------------------
+# Web search providers (optional)
+# ---------------------------------------------------------------------------
+#
+# Uncomment exactly one search backend if your agents use web search.
+
+# [web.brave]
+# enabled = true
+# api_key_env = "BRAVE_API_KEY"
+
+# [web.tavily]
+# enabled = true
+# api_key_env = "TAVILY_API_KEY"
+
+# [web.perplexity]
+# enabled = true
+# api_key_env = "PERPLEXITY_API_KEY"
+# model = "sonar-pro"
+
+# ---------------------------------------------------------------------------
+# Reverse proxy notes
+# ---------------------------------------------------------------------------
+#
+# Common production pattern:
+# - OpenFang listens on 127.0.0.1 or 0.0.0.0:4200
+# - Nginx/Caddy/Traefik terminates TLS
+# - `api_key` protects API access
+# - model/provider secrets stay in environment variables managed by systemd,
+#   Docker, Kubernetes, Nomad, or your secret manager

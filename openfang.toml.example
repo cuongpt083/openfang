@@ -9,6 +9,7 @@
 provider = "anthropic"                    # "anthropic", "gemini", "openai", "groq", "ollama", etc.
 model = "claude-sonnet-4-20250514"        # Model identifier
 api_key_env = "ANTHROPIC_API_KEY"         # Environment variable holding API key
+# system_prompt_mode = "native"           # "native" or "merge_into_first_user" for llama.cpp/Gemma-style compatibility
 # base_url = "https://api.anthropic.com"  # Optional: override API endpoint
 
 [memory]

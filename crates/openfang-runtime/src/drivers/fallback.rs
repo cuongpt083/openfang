@@ -159,6 +159,7 @@ mod tests {
             max_tokens: 100,
             temperature: 0.0,
             system: None,
+            system_prompt_mode: openfang_types::agent::SystemPromptMode::Native,
             thinking: None,
         }
     }

@@ -161,6 +161,7 @@ impl SetupWizard {
                 max_tokens: 4096,
                 temperature: 0.7,
                 system_prompt,
+                system_prompt_mode: openfang_types::agent::SystemPromptMode::Native,
                 api_key_env: None,
                 base_url: None,
             },

@@ -23,6 +23,7 @@ fn test_config(provider: &str, model: &str, api_key_env: &str) -> KernelConfig {
             provider: provider.to_string(),
             model: model.to_string(),
             api_key_env: api_key_env.to_string(),
+            system_prompt_mode: openfang_types::agent::SystemPromptMode::Native,
             base_url: None,
         },
         ..KernelConfig::default()

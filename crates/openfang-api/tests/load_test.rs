@@ -41,6 +41,7 @@ async fn start_test_server() -> TestServer {
             provider: "ollama".to_string(),
             model: "test-model".to_string(),
             api_key_env: "OLLAMA_API_KEY".to_string(),
+            system_prompt_mode: openfang_types::agent::SystemPromptMode::Native,
             base_url: None,
         },
         ..KernelConfig::default()

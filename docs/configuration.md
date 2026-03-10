@@ -262,6 +262,7 @@ Configures the primary LLM provider used when agents do not specify their own mo
 provider = "anthropic"
 model = "claude-sonnet-4-20250514"
 api_key_env = "ANTHROPIC_API_KEY"
+# system_prompt_mode = "native"
 # base_url = "https://api.anthropic.com"
 ```
 
@@ -270,7 +271,19 @@ api_key_env = "ANTHROPIC_API_KEY"
 | `provider` | string | `"anthropic"` | Provider name. Supported: `anthropic`, `gemini`, `openai`, `groq`, `openrouter`, `deepseek`, `together`, `mistral`, `fireworks`, `ollama`, `vllm`, `lmstudio`, `perplexity`, `cohere`, `ai21`, `cerebras`, `sambanova`, `huggingface`, `xai`, `replicate`. |
 | `model` | string | `"claude-sonnet-4-20250514"` | Model identifier. Aliases like `sonnet`, `haiku`, `gpt-4o`, `gemini-flash` are resolved by the model catalog. |
 | `api_key_env` | string | `"ANTHROPIC_API_KEY"` | Name of the environment variable holding the API key. The actual key is read from this env var at runtime, never stored in config. |
+| `system_prompt_mode` | string | `"native"` | How OpenFang sends the system prompt upstream. Use `merge_into_first_user` for endpoints like llama.cpp serving Gemma-family models that reject `system` messages. |
 | `base_url` | string or null | `null` | Override the API base URL. Useful for proxies or self-hosted endpoints. When `null`, the provider's default URL from the model catalog is used. |
+
+Example for llama.cpp with Gemma:
+
+```toml
+[default_model]
+provider = "llamacpp"
+model = "gemma-3-27b-it"
+api_key_env = ""
+system_prompt_mode = "merge_into_first_user"
+base_url = "http://localhost:8080/v1"
+```
 
 ---
 

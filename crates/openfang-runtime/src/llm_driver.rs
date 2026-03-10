@@ -3,6 +3,7 @@
 //! Abstracts over multiple LLM providers (Anthropic, OpenAI, Ollama, etc.).
 
 use async_trait::async_trait;
+use openfang_types::agent::SystemPromptMode;
 use openfang_types::message::{ContentBlock, Message, StopReason, TokenUsage};
 use openfang_types::tool::{ToolCall, ToolDefinition};
 use serde::{Deserialize, Serialize};
@@ -63,6 +64,8 @@ pub struct CompletionRequest {
     pub temperature: f32,
     /// System prompt (extracted from messages for APIs that need it separately).
     pub system: Option<String>,
+    /// How to encode the system prompt for provider compatibility.
+    pub system_prompt_mode: SystemPromptMode,
     /// Extended thinking configuration (if supported by the model).
     pub thinking: Option<openfang_types::config::ThinkingConfig>,
 }
@@ -275,6 +278,7 @@ mod tests {
             max_tokens: 100,
             temperature: 0.0,
             system: None,
+            system_prompt_mode: openfang_types::agent::SystemPromptMode::Native,
             thinking: None,
         };
 
