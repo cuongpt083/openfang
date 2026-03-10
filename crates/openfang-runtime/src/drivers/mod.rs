@@ -2,7 +2,7 @@
 //!
 //! Contains drivers for Anthropic Claude, Google Gemini, OpenAI-compatible APIs, and more.
 //! Supports: Anthropic, Gemini, OpenAI, Groq, OpenRouter, DeepSeek, Together,
-//! Mistral, Fireworks, Ollama, vLLM, and any OpenAI-compatible endpoint.
+//! Mistral, Fireworks, Ollama, Llama.cpp, vLLM, LM Studio, and any OpenAI-compatible endpoint.
 
 pub mod anthropic;
 pub mod claude_code;
@@ -13,9 +13,9 @@ pub mod openai;
 
 use crate::llm_driver::{DriverConfig, LlmDriver, LlmError};
 use openfang_types::model_catalog::{
-    AI21_BASE_URL, ANTHROPIC_BASE_URL, CEREBRAS_BASE_URL, COHERE_BASE_URL, DEEPSEEK_BASE_URL,
+    LLAMACPP_BASE_URL,AI21_BASE_URL, ANTHROPIC_BASE_URL, CEREBRAS_BASE_URL, COHERE_BASE_URL, DEEPSEEK_BASE_URL,
     FIREWORKS_BASE_URL, GEMINI_BASE_URL, GROQ_BASE_URL, HUGGINGFACE_BASE_URL, LEMONADE_BASE_URL,
-    LMSTUDIO_BASE_URL,
+    LMSTUDIO_BASE_URL, 
     MINIMAX_BASE_URL, MISTRAL_BASE_URL, MOONSHOT_BASE_URL, OLLAMA_BASE_URL, OPENAI_BASE_URL,
     OPENROUTER_BASE_URL, PERPLEXITY_BASE_URL, QIANFAN_BASE_URL, QWEN_BASE_URL,
     REPLICATE_BASE_URL, SAMBANOVA_BASE_URL, TOGETHER_BASE_URL, VENICE_BASE_URL, VLLM_BASE_URL,
@@ -93,6 +93,9 @@ fn provider_defaults(provider: &str) -> Option<ProviderDefaults> {
         "lemonade" => Some(ProviderDefaults {
             base_url: LEMONADE_BASE_URL,
             api_key_env: "LEMONADE_API_KEY",
+        "llamacpp" | "llama-cpp" | "llama.cpp" => Some(ProviderDefaults {
+            base_url: LLAMACPP_BASE_URL,
+            api_key_env: "LLAMACPP_API_KEY",
             key_required: false,
         }),
         "perplexity" => Some(ProviderDefaults {
@@ -221,6 +224,7 @@ fn provider_defaults(provider: &str) -> Option<ProviderDefaults> {
 /// - `mistral` — Mistral AI
 /// - `fireworks` — Fireworks AI
 /// - `ollama` — Ollama (local)
+/// - `llamacpp` — Llama.cpp (local)
 /// - `vllm` — vLLM (local)
 /// - `lmstudio` — LM Studio (local)
 /// - `perplexity` — Perplexity AI (search-augmented)
@@ -432,6 +436,7 @@ pub fn known_providers() -> &'static [&'static str] {
         "mistral",
         "fireworks",
         "ollama",
+        "llamacpp",
         "vllm",
         "lmstudio",
         "perplexity",
@@ -547,9 +552,27 @@ mod tests {
         assert!(providers.contains(&"zhipu_coding"));
         assert!(providers.contains(&"qianfan"));
         assert!(providers.contains(&"volcengine"));
+        assert!(providers.contains(&"llamacpp"));
         assert!(providers.contains(&"codex"));
         assert!(providers.contains(&"claude-code"));
         assert_eq!(providers.len(), 31);
+    }
+
+    #[test]
+    fn test_provider_defaults_llamacpp() {
+        let d = provider_defaults("llamacpp").unwrap();
+        assert_eq!(d.base_url, "http://localhost:8080/v1");
+        assert_eq!(d.api_key_env, "LLAMACPP_API_KEY");
+        assert!(!d.key_required);
+    }
+
+    #[test]
+    fn test_provider_defaults_llamacpp_alias() {
+        let d = provider_defaults("llama-cpp").unwrap();
+        assert_eq!(d.base_url, "http://localhost:8080/v1");
+        assert!(!d.key_required);
+        let d2 = provider_defaults("llama.cpp").unwrap();
+        assert_eq!(d2.base_url, "http://localhost:8080/v1");
     }
 
     #[test]

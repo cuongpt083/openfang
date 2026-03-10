@@ -12,7 +12,7 @@ use openfang_types::model_catalog::{
     QIANFAN_BASE_URL, QWEN_BASE_URL,
     REPLICATE_BASE_URL, SAMBANOVA_BASE_URL, TOGETHER_BASE_URL, VENICE_BASE_URL, VLLM_BASE_URL,
     VOLCENGINE_BASE_URL, VOLCENGINE_CODING_BASE_URL, XAI_BASE_URL, ZAI_BASE_URL,
-    ZAI_CODING_BASE_URL, ZHIPU_BASE_URL, ZHIPU_CODING_BASE_URL,
+    ZAI_CODING_BASE_URL, ZHIPU_BASE_URL, ZHIPU_CODING_BASE_URL, LLAMACPP_BASE_URL,
 };
 use std::collections::HashMap;
 
@@ -517,6 +517,12 @@ fn builtin_providers() -> Vec<ProviderInfo> {
             display_name: "Lemonade".into(),
             api_key_env: "LEMONADE_API_KEY".into(),
             base_url: LEMONADE_BASE_URL.into(),
+        },
+        ProviderInfo {
+            id: "llamacpp".into(),
+            display_name: "Llama.cpp".into(),
+            api_key_env: "LLAMACPP_API_KEY".into(),
+            base_url: LLAMACPP_BASE_URL.into(),
             key_required: false,
             auth_status: AuthStatus::NotRequired,
             model_count: 0,
@@ -807,6 +813,8 @@ fn builtin_aliases() -> HashMap<String, String> {
         ("claude-code-opus", "claude-code/opus"),
         ("claude-code-sonnet", "claude-code/sonnet"),
         ("claude-code-haiku", "claude-code/haiku"),
+        // Llama.cpp aliases
+        ("llamacpp", "llamacpp-default"),
     ];
     pairs
         .into_iter()
@@ -2103,6 +2111,23 @@ fn builtin_models() -> Vec<ModelCatalogEntry> {
             id: "lmstudio-local".into(),
             display_name: "LM Studio Local Model".into(),
             provider: "lmstudio".into(),
+            tier: ModelTier::Local,
+            context_window: 32_768,
+            max_output_tokens: 4_096,
+            input_cost_per_m: 0.0,
+            output_cost_per_m: 0.0,
+            supports_tools: true,
+            supports_vision: false,
+            supports_streaming: true,
+            aliases: vec![],
+        },
+        // ══════════════════════════════════════════════════════════════
+        // Llama.cpp (1) — generic local entry + dynamic discovery
+        // ══════════════════════════════════════════════════════════════
+        ModelCatalogEntry {
+            id: "llamacpp-default".into(),
+            display_name: "Llama.cpp Local Model".into(),
+            provider: "llamacpp".into(),
             tier: ModelTier::Local,
             context_window: 32_768,
             max_output_tokens: 4_096,

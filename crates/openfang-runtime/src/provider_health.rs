@@ -1,6 +1,6 @@
 //! Provider health probing — lightweight HTTP checks for local LLM providers.
 //!
-//! Probes local providers (Ollama, vLLM, LM Studio) for reachability and
+//! Probes local providers (Ollama, vLLM, LM Studio, Llama.cpp) for reachability and
 //! dynamically discovers which models they currently serve.
 //!
 //! Includes a [`ProbeCache`] with configurable TTL so that the `/api/providers`
@@ -25,11 +25,11 @@ pub struct ProbeResult {
 
 /// Check if a provider is a local provider (no key required, localhost URL).
 ///
-/// Returns true for `"ollama"`, `"vllm"`, `"lmstudio"`.
+/// Returns true for `"ollama"`, `"vllm"`, `"lmstudio"`, `"llamacpp"`.
 pub fn is_local_provider(provider: &str) -> bool {
     matches!(
         provider.to_lowercase().as_str(),
-        "ollama" | "vllm" | "lmstudio"
+        "ollama" | "vllm" | "lmstudio" | "llamacpp"
     )
 }
 
@@ -92,7 +92,7 @@ impl Default for ProbeCache {
 /// Probe a provider's health by hitting its model listing endpoint.
 ///
 /// - **Ollama**: `GET {base_url_root}/api/tags` → parses `.models[].name`
-/// - **OpenAI-compat** (vLLM, LM Studio): `GET {base_url}/models` → parses `.data[].id`
+/// - **OpenAI-compat** (vLLM, LM Studio, Llama.cpp): `GET {base_url}/models` → parses `.data[].id`
 ///
 /// `base_url` should be the provider's base URL from the catalog (e.g.,
 /// `http://localhost:11434/v1` for Ollama, `http://localhost:8000/v1` for vLLM).
@@ -277,6 +277,8 @@ mod tests {
         assert!(is_local_provider("OLLAMA"));
         assert!(is_local_provider("vllm"));
         assert!(is_local_provider("lmstudio"));
+        assert!(is_local_provider("llamacpp"));
+        assert!(is_local_provider("LlamaCpp"));
     }
 
     #[test]

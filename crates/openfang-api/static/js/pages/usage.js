@@ -33,7 +33,7 @@ function analyticsPage() {
           this.loadByAgent(),
           this.loadDailyCosts()
         ]);
-      } catch(e) {
+      } catch (e) {
         this.loadError = e.message || 'Could not load usage data.';
       }
       this.loading = false;
@@ -44,7 +44,7 @@ function analyticsPage() {
     async loadSummary() {
       try {
         this.summary = await OpenFangAPI.get('/api/usage/summary');
-      } catch(e) {
+      } catch (e) {
         this.summary = { total_input_tokens: 0, total_output_tokens: 0, total_cost_usd: 0, call_count: 0, total_tool_calls: 0 };
         throw e;
       }
@@ -54,14 +54,14 @@ function analyticsPage() {
       try {
         var data = await OpenFangAPI.get('/api/usage/by-model');
         this.byModel = data.models || [];
-      } catch(e) { this.byModel = []; }
+      } catch (e) { this.byModel = []; }
     },
 
     async loadByAgent() {
       try {
         var data = await OpenFangAPI.get('/api/usage');
         this.byAgent = data.agents || [];
-      } catch(e) { this.byAgent = []; }
+      } catch (e) { this.byAgent = []; }
     },
 
     async loadDailyCosts() {
@@ -70,7 +70,7 @@ function analyticsPage() {
         this.dailyCosts = data.days || [];
         this.todayCost = data.today_cost_usd || 0;
         this.firstEventDate = data.first_event_date || null;
-      } catch(e) {
+      } catch (e) {
         this.dailyCosts = [];
         this.todayCost = 0;
         this.firstEventDate = null;
@@ -92,7 +92,7 @@ function analyticsPage() {
 
     maxTokens() {
       var max = 0;
-      this.byModel.forEach(function(m) {
+      this.byModel.forEach(function (m) {
         var t = (m.total_input_tokens || 0) + (m.total_output_tokens || 0);
         if (t > max) max = t;
       });
@@ -127,7 +127,7 @@ function analyticsPage() {
     costByProvider() {
       var providerMap = {};
       var self = this;
-      this.byModel.forEach(function(m) {
+      this.byModel.forEach(function (m) {
         var provider = self._extractProvider(m.model);
         if (!providerMap[provider]) {
           providerMap[provider] = { provider: provider, cost: 0, tokens: 0, calls: 0 };
@@ -142,13 +142,19 @@ function analyticsPage() {
           result.push(providerMap[key]);
         }
       }
-      result.sort(function(a, b) { return b.cost - a.cost; });
+      result.sort(function (a, b) { return b.cost - a.cost; });
       return result;
     },
 
     _extractProvider(modelName) {
       if (!modelName) return 'Unknown';
       var lower = modelName.toLowerCase();
+
+      // Local/self-hosted providers first to prevent overriding
+      if (lower.indexOf('llamacpp') !== -1 || lower.indexOf('gguf') !== -1) return 'Llama.cpp';
+      if (lower.indexOf('ollama') !== -1) return 'Ollama';
+      if (lower.indexOf('lmstudio') !== -1) return 'LM Studio';
+
       if (lower.indexOf('claude') !== -1 || lower.indexOf('haiku') !== -1 || lower.indexOf('sonnet') !== -1 || lower.indexOf('opus') !== -1) return 'Anthropic';
       if (lower.indexOf('gemini') !== -1 || lower.indexOf('gemma') !== -1) return 'Google';
       if (lower.indexOf('gpt') !== -1 || lower.indexOf('o1') !== -1 || lower.indexOf('o3') !== -1 || lower.indexOf('o4') !== -1) return 'OpenAI';
@@ -168,7 +174,7 @@ function analyticsPage() {
       var providers = this.costByProvider();
       var total = 0;
       var colors = this._chartColors;
-      providers.forEach(function(p) { total += p.cost; });
+      providers.forEach(function (p) { total += p.cost; });
       if (total === 0) return [];
 
       var segments = [];
@@ -197,7 +203,7 @@ function analyticsPage() {
       var days = this.dailyCosts;
       if (!days || days.length === 0) return [];
       var maxCost = 0;
-      days.forEach(function(d) { if (d.cost_usd > maxCost) maxCost = d.cost_usd; });
+      days.forEach(function (d) { if (d.cost_usd > maxCost) maxCost = d.cost_usd; });
       if (maxCost === 0) maxCost = 1;
 
       var dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -222,13 +228,13 @@ function analyticsPage() {
 
     costByModelSorted() {
       var models = this.byModel.slice();
-      models.sort(function(a, b) { return (b.total_cost_usd || 0) - (a.total_cost_usd || 0); });
+      models.sort(function (a, b) { return (b.total_cost_usd || 0) - (a.total_cost_usd || 0); });
       return models;
     },
 
     maxModelCost() {
       var max = 0;
-      this.byModel.forEach(function(m) {
+      this.byModel.forEach(function (m) {
         if ((m.total_cost_usd || 0) > max) max = m.total_cost_usd;
       });
       return max || 1;
@@ -241,6 +247,9 @@ function analyticsPage() {
     modelTier(modelName) {
       if (!modelName) return 'unknown';
       var lower = modelName.toLowerCase();
+      // Local models
+      if (lower.indexOf('llamacpp') !== -1 || lower.indexOf('gguf') !== -1 || lower.indexOf('ollama') !== -1 || lower.indexOf('lmstudio') !== -1) return 'local';
+
       if (lower.indexOf('opus') !== -1 || lower.indexOf('o1') !== -1 || lower.indexOf('o3') !== -1 || lower.indexOf('deepseek-r1') !== -1) return 'frontier';
       if (lower.indexOf('sonnet') !== -1 || lower.indexOf('gpt-4') !== -1 || lower.indexOf('gemini-2.5') !== -1 || lower.indexOf('gemini-1.5-pro') !== -1) return 'smart';
       if (lower.indexOf('haiku') !== -1 || lower.indexOf('gpt-3.5') !== -1 || lower.indexOf('flash') !== -1 || lower.indexOf('mixtral') !== -1) return 'balanced';

@@ -174,7 +174,7 @@ function settingsPage() {
           this.loadProviders(),
           this.loadModels()
         ]);
-      } catch(e) {
+      } catch (e) {
         this.loadError = e.message || 'Could not load settings.';
       }
       this.loading = false;
@@ -195,27 +195,27 @@ function settingsPage() {
           default_provider: status.default_provider || '-',
           default_model: status.default_model || '-'
         };
-      } catch(e) { throw e; }
+      } catch (e) { throw e; }
     },
 
     async loadUsage() {
       try {
         var data = await OpenFangAPI.get('/api/usage');
         this.usageData = data.agents || [];
-      } catch(e) { this.usageData = []; }
+      } catch (e) { this.usageData = []; }
     },
 
     async loadTools() {
       try {
         var data = await OpenFangAPI.get('/api/tools');
         this.tools = data.tools || [];
-      } catch(e) { this.tools = []; }
+      } catch (e) { this.tools = []; }
     },
 
     async loadConfig() {
       try {
         this.config = await OpenFangAPI.get('/api/config');
-      } catch(e) { this.config = {}; }
+      } catch (e) { this.config = {}; }
     },
 
     async loadProviders() {
@@ -233,14 +233,14 @@ function settingsPage() {
             }
           }
         }
-      } catch(e) { this.providers = []; }
+      } catch (e) { this.providers = []; }
     },
 
     async loadModels() {
       try {
         var data = await OpenFangAPI.get('/api/models');
         this.models = data.models || [];
-      } catch(e) { this.models = []; }
+      } catch (e) { this.models = []; }
     },
 
     async addCustomModel() {
@@ -258,7 +258,7 @@ function settingsPage() {
         this.customModelId = '';
         this.showCustomModelForm = false;
         await this.loadModels();
-      } catch(e) {
+      } catch (e) {
         this.customModelStatus = 'Error: ' + (e.message || 'Failed');
       }
     },
@@ -269,7 +269,7 @@ function settingsPage() {
         await OpenFangAPI.del('/api/models/custom/' + encodeURIComponent(modelId));
         OpenFangToast.success('Model deleted');
         await this.loadModels();
-      } catch(e) {
+      } catch (e) {
         OpenFangToast.error('Failed to delete: ' + (e.message || 'Unknown error'));
       }
     },
@@ -277,12 +277,12 @@ function settingsPage() {
     async loadConfigSchema() {
       try {
         var results = await Promise.all([
-          OpenFangAPI.get('/api/config/schema').catch(function() { return {}; }),
+          OpenFangAPI.get('/api/config/schema').catch(function () { return {}; }),
           OpenFangAPI.get('/api/config')
         ]);
         this.configSchema = results[0].sections || null;
         this.configValues = results[1] || {};
-      } catch(e) { /* silent */ }
+      } catch (e) { /* silent */ }
     },
 
     isConfigDirty(section, field) {
@@ -304,6 +304,8 @@ function settingsPage() {
         this.configDirty[key] = false;
         OpenFangToast.success('Saved ' + field);
       } catch(e) {
+        OpenFangToast.success('Saved ' + key);
+      } catch (e) {
         OpenFangToast.error('Failed to save: ' + e.message);
       }
       this.configSaving[key] = false;
@@ -312,21 +314,21 @@ function settingsPage() {
     get filteredTools() {
       var q = this.toolSearch.toLowerCase().trim();
       if (!q) return this.tools;
-      return this.tools.filter(function(t) {
+      return this.tools.filter(function (t) {
         return t.name.toLowerCase().indexOf(q) !== -1 ||
-               (t.description || '').toLowerCase().indexOf(q) !== -1;
+          (t.description || '').toLowerCase().indexOf(q) !== -1;
       });
     },
 
     get filteredModels() {
       var self = this;
-      return this.models.filter(function(m) {
+      return this.models.filter(function (m) {
         if (self.modelProviderFilter && m.provider !== self.modelProviderFilter) return false;
         if (self.modelTierFilter && m.tier !== self.modelTierFilter) return false;
         if (self.modelSearch) {
           var q = self.modelSearch.toLowerCase();
           if (m.id.toLowerCase().indexOf(q) === -1 &&
-              (m.display_name || '').toLowerCase().indexOf(q) === -1) return false;
+            (m.display_name || '').toLowerCase().indexOf(q) === -1) return false;
         }
         return true;
       });
@@ -334,13 +336,13 @@ function settingsPage() {
 
     get uniqueProviderNames() {
       var seen = {};
-      this.models.forEach(function(m) { seen[m.provider] = true; });
+      this.models.forEach(function (m) { seen[m.provider] = true; });
       return Object.keys(seen).sort();
     },
 
     get uniqueTiers() {
       var seen = {};
-      this.models.forEach(function(m) { if (m.tier) seen[m.tier] = true; });
+      this.models.forEach(function (m) { if (m.tier) seen[m.tier] = true; });
       return Object.keys(seen).sort();
     },
 
@@ -406,7 +408,7 @@ function settingsPage() {
         this.providerKeyInputs[provider.id] = '';
         await this.loadProviders();
         await this.loadModels();
-      } catch(e) {
+      } catch (e) {
         OpenFangToast.error('Failed to save key: ' + e.message);
       }
     },
@@ -417,7 +419,7 @@ function settingsPage() {
         OpenFangToast.success('API key removed for ' + provider.display_name);
         await this.loadProviders();
         await this.loadModels();
-      } catch(e) {
+      } catch (e) {
         OpenFangToast.error('Failed to remove key: ' + e.message);
       }
     },
@@ -433,7 +435,7 @@ function settingsPage() {
         this.copilotOAuth.interval = resp.interval || 5;
         window.open(resp.verification_uri, '_blank');
         this.pollCopilotOAuth();
-      } catch(e) {
+      } catch (e) {
         OpenFangToast.error('Failed to start Copilot login: ' + e.message);
         this.copilotOAuth.polling = false;
       }
@@ -441,7 +443,7 @@ function settingsPage() {
 
     pollCopilotOAuth() {
       var self = this;
-      setTimeout(async function() {
+      setTimeout(async function () {
         if (!self.copilotOAuth.pollId) return;
         try {
           var resp = await OpenFangAPI.get('/api/providers/github-copilot/oauth/poll/' + self.copilotOAuth.pollId);
@@ -463,7 +465,7 @@ function settingsPage() {
             OpenFangToast.error('OAuth error: ' + (resp.error || resp.status));
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
           }
-        } catch(e) {
+        } catch (e) {
           OpenFangToast.error('Poll error: ' + e.message);
           self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
         }
@@ -481,7 +483,7 @@ function settingsPage() {
         } else {
           OpenFangToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
         }
-      } catch(e) {
+      } catch (e) {
         this.providerTestResults[provider.id] = { status: 'error', error: e.message };
         OpenFangToast.error('Test failed: ' + e.message);
       }
@@ -501,10 +503,10 @@ function settingsPage() {
         if (result.reachable) {
           OpenFangToast.success(provider.display_name + ' URL saved &mdash; reachable (' + (result.latency_ms || '?') + 'ms)');
         } else {
-          OpenFangToast.warning(provider.display_name + ' URL saved but not reachable');
+          OpenFangToast.warn(provider.display_name + ' URL saved but not reachable');
         }
         await this.loadProviders();
-      } catch(e) {
+      } catch (e) {
         OpenFangToast.error('Failed to save URL: ' + e.message);
       }
       this.providerUrlSaving[provider.id] = false;
@@ -543,7 +545,7 @@ function settingsPage() {
       this.secLoading = true;
       try {
         this.securityData = await OpenFangAPI.get('/api/security');
-      } catch(e) {
+      } catch (e) {
         this.securityData = null;
       }
       this.secLoading = false;
@@ -607,7 +609,7 @@ function settingsPage() {
       try {
         var res = await OpenFangAPI.get('/api/audit/verify');
         this.chainResult = res;
-      } catch(e) {
+      } catch (e) {
         this.chainResult = { valid: false, error: e.message };
       }
       this.verifyingChain = false;
@@ -619,7 +621,7 @@ function settingsPage() {
       this.peersLoadError = '';
       try {
         var data = await OpenFangAPI.get('/api/peers');
-        this.peers = (data.peers || []).map(function(p) {
+        this.peers = (data.peers || []).map(function (p) {
           return {
             node_id: p.node_id,
             node_name: p.node_name,
@@ -629,7 +631,7 @@ function settingsPage() {
             protocol_version: p.protocol_version || 1
           };
         });
-      } catch(e) {
+      } catch (e) {
         this.peers = [];
         this.peersLoadError = e.message || 'Could not load peers.';
       }
@@ -639,11 +641,11 @@ function settingsPage() {
     startPeerPolling() {
       var self = this;
       this.stopPeerPolling();
-      this._peerPollTimer = setInterval(async function() {
+      this._peerPollTimer = setInterval(async function () {
         if (self.tab !== 'network') { self.stopPeerPolling(); return; }
         try {
           var data = await OpenFangAPI.get('/api/peers');
-          self.peers = (data.peers || []).map(function(p) {
+          self.peers = (data.peers || []).map(function (p) {
             return {
               node_id: p.node_id,
               node_name: p.node_name,
@@ -653,7 +655,7 @@ function settingsPage() {
               protocol_version: p.protocol_version || 1
             };
           });
-        } catch(e) { /* silent */ }
+        } catch (e) { /* silent */ }
       }, 15000);
     },
 
@@ -673,7 +675,7 @@ function settingsPage() {
         } else {
           this.migStep = 'not_found';
         }
-      } catch(e) {
+      } catch (e) {
         this.migStep = 'not_found';
       }
       this.detecting = false;
@@ -691,7 +693,7 @@ function settingsPage() {
         }
         this.scanResult = data;
         this.migStep = 'preview';
-      } catch(e) {
+      } catch (e) {
         OpenFangToast.error('Scan failed: ' + e.message);
       }
       this.scanning = false;
@@ -710,7 +712,7 @@ function settingsPage() {
         });
         this.migResult = data;
         this.migStep = 'result';
-      } catch(e) {
+      } catch (e) {
         this.migResult = { status: 'failed', error: e.message };
         this.migStep = 'result';
       }
